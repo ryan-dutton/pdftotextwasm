@@ -1,4 +1,5 @@
 import createPdftotextModule from "./pdftotext-worker.js";
+import pdftotextWasmModule from "./pdftotext-worker.wasm";
 
 let modulePromise;
 let runQueue = Promise.resolve();
@@ -7,11 +8,10 @@ function getModule() {
   if (!modulePromise) {
     modulePromise = createPdftotextModule({
       noInitialRun: true,
-      locateFile(path) {
-        if (path.endsWith(".wasm")) {
-          return new URL("./pdftotext-worker.wasm", import.meta.url).toString();
-        }
-        return path;
+      instantiateWasm(imports, receiveInstance) {
+        const instance = new WebAssembly.Instance(pdftotextWasmModule, imports);
+        receiveInstance(instance, pdftotextWasmModule);
+        return instance.exports;
       },
       print() {},
       printErr() {},
