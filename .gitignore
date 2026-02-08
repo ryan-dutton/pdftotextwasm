@@ -3,3 +3,6 @@ build-wasm/
 build-wasm-worker/
 __pycache__/
 *.log
+.wrangler/
+node_modules/
+wrangler.toml

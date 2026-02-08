@@ -31,6 +31,14 @@ mkdir -p "${BUILD_WEB_DIR}" "${BUILD_WORKER_DIR}" "${WEB_DIR}" "${WORKER_DIR}"
 
 EM_CACHE="${EM_CACHE_DIR}" embuilder build freetype zlib
 
+if [[ ! -f "${EM_CACHE_DIR}/sysroot/include/freetype2/ft2build.h" ]] || \
+   [[ ! -f "${EM_CACHE_DIR}/sysroot/lib/wasm32-emscripten/libfreetype.a" ]] || \
+   [[ ! -f "${EM_CACHE_DIR}/sysroot/lib/wasm32-emscripten/libz.a" ]]; then
+  echo "error: Emscripten ports were not prepared in ${EM_CACHE_DIR}/sysroot." >&2
+  echo "hint: ensure network access for embuilder, use one emsdk in PATH, then rerun ./build_wasm.sh." >&2
+  exit 1
+fi
+
 COMMON_CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
   -DBUILD_SHARED_LIBS=OFF
@@ -65,6 +73,10 @@ configure_and_build() {
   local linker_flags="$2"
   pushd "${build_dir}" >/dev/null
 
+  # Avoid stale toolchain/compiler paths when switching emsdk installs.
+  rm -f CMakeCache.txt
+  rm -rf CMakeFiles
+
   EM_CACHE="${EM_CACHE_DIR}" emcmake cmake "${POPPLER_DIR}" -G Ninja \
     "${COMMON_CMAKE_ARGS[@]}" \
     "-DCMAKE_EXE_LINKER_FLAGS=${linker_flags}"
@@ -83,6 +95,9 @@ cp -f "${BUILD_WEB_DIR}/utils/pdftotext.js" "${WEB_DIR}/pdftotext.js"
 cp -f "${BUILD_WEB_DIR}/utils/pdftotext.wasm" "${WEB_DIR}/pdftotext.wasm"
 cp -f "${BUILD_WORKER_DIR}/utils/pdftotext.js" "${WORKER_DIR}/pdftotext-worker.js"
 cp -f "${BUILD_WORKER_DIR}/utils/pdftotext.wasm" "${WORKER_DIR}/pdftotext-worker.wasm"
+
+# Workerd may not expose self.location; guard Emscripten's worker path probe.
+perl -0pi -e 's/scriptDirectory=self\.location\.href/scriptDirectory=(typeof self!="undefined"&&self.location&&self.location.href)?self.location.href:""/g' "${WORKER_DIR}/pdftotext-worker.js"
 
 echo "Built browser artifacts:"
 echo "  ${WEB_DIR}/pdftotext.js"
