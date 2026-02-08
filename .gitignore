@@ -1,0 +1,4 @@
+.emcache/
+build-wasm/
+__pycache__/
+*.log

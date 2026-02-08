@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Poppler pdftotext (WASM)</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: #f6f7f9;
+      color: #18212f;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      max-width: 960px;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #d9dee8;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 10px rgba(24, 33, 47, 0.05);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.3rem;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    button {
+      border: 1px solid #2f5f97;
+      background: #2f5f97;
+      color: #fff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button[disabled] {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    textarea {
+      width: 100%;
+      min-height: 320px;
+      border: 1px solid #c7cfdd;
+      border-radius: 8px;
+      padding: 10px;
+      box-sizing: border-box;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9rem;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      color: #32445d;
+    }
+    .status {
+      font-weight: 600;
+      color: #2f5f97;
+    }
+    code {
+      background: #eef2f8;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Poppler <code>pdftotext</code> in WebAssembly</h1>
+    <div class="row">
+      <input id="pdfFile" type="file" accept="application/pdf">
+      <label><input id="layoutOpt" type="checkbox"> Preserve layout (<code>-layout</code>)</label>
+    </div>
+    <div class="row">
+      <button id="extractBtn" disabled>Extract Text</button>
+      <button id="downloadBtn" disabled>Download Text</button>
+      <span id="status" class="status">Loading WASM...</span>
+    </div>
+    <p>
+      Runs fully in your browser using an Emscripten build of Poppler <code>pdftotext</code>.
+    </p>
+  </div>
+
+  <div class="card">
+    <textarea id="output" placeholder="Extracted text will appear here"></textarea>
+  </div>
+
+  <div class="card">
+    <strong>Logs</strong>
+    <pre id="logs"></pre>
+  </div>
+
+  <script>
+    const runtimeLogs = [];
+    let moduleReadyResolve;
+    const moduleReady = new Promise((resolve) => {
+      moduleReadyResolve = resolve;
+    });
+
+    window.Module = {
+      noInitialRun: true,
+      print: (text) => {
+        runtimeLogs.push(String(text));
+      },
+      printErr: (text) => {
+        runtimeLogs.push(String(text));
+      },
+      onRuntimeInitialized: function () {
+        moduleReadyResolve(this);
+      },
+      locateFile: (path) => path,
+    };
+  </script>
+  <script src="pdftotext.js"></script>
+  <script>
+    const fileInput = document.getElementById("pdfFile");
+    const layoutOpt = document.getElementById("layoutOpt");
+    const extractBtn = document.getElementById("extractBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const logsEl = document.getElementById("logs");
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    function refreshLogs() {
+      logsEl.textContent = runtimeLogs.join("\n");
+    }
+
+    function safeUnlink(FS, path) {
+      try {
+        FS.unlink(path);
+      } catch (_) {
+      }
+    }
+
+    function enableActions() {
+      extractBtn.disabled = false;
+      setStatus("WASM ready");
+    }
+
+    moduleReady.then(enableActions).catch((err) => {
+      setStatus("Failed to initialize WASM");
+      runtimeLogs.push(String(err));
+      refreshLogs();
+    });
+
+    extractBtn.addEventListener("click", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        setStatus("Select a PDF first");
+        return;
+      }
+
+      extractBtn.disabled = true;
+      downloadBtn.disabled = true;
+      runtimeLogs.length = 0;
+      refreshLogs();
+      setStatus("Extracting...");
+
+      try {
+        const mod = await moduleReady;
+        const pdfBytes = new Uint8Array(await file.arrayBuffer());
+        const inPath = "/input.pdf";
+        const outPath = "/output.txt";
+
+        safeUnlink(mod.FS, inPath);
+        safeUnlink(mod.FS, outPath);
+
+        mod.FS.writeFile(inPath, pdfBytes);
+
+        const args = [];
+        if (layoutOpt.checked) {
+          args.push("-layout");
+        }
+        args.push(inPath, outPath);
+
+        const rc = mod.callMain(args.slice());
+        if (rc !== 0) {
+          throw new Error("pdftotext exited with code " + rc);
+        }
+
+        const text = mod.FS.readFile(outPath, { encoding: "utf8" });
+        outputEl.value = text;
+        downloadBtn.disabled = false;
+        setStatus("Done");
+      } catch (err) {
+        setStatus("Extraction failed");
+        runtimeLogs.push(String(err));
+      } finally {
+        refreshLogs();
+        extractBtn.disabled = false;
+      }
+    });
+
+    downloadBtn.addEventListener("click", () => {
+      const text = outputEl.value;
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "output.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
