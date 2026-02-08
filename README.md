@@ -7,6 +7,8 @@ This project builds Poppler's `pdftotext` command to WebAssembly using Emscripte
 - `build_wasm.sh`: reproducible build script for Poppler + Emscripten.
 - `web/index.html`: upload UI that runs `pdftotext` inside browser WASM.
 - `web/pdftotext.js` and `web/pdftotext.wasm`: generated artifacts.
+- `worker/pdftotext-worker.js` and `worker/pdftotext-worker.wasm`: Cloudflare Worker-oriented ESM + WASM artifacts.
+- `worker/sample-endpoint.js`: sample Worker endpoint that accepts PDF bytes and returns extracted text.
 
 ## Run locally
 
@@ -29,7 +31,10 @@ Make sure Emscripten is loaded in your shell first, then run:
 ./build_wasm.sh
 ```
 
-The script outputs fresh artifacts into `web/`.
+The script outputs fresh artifacts into:
+
+- `web/` (browser demo)
+- `worker/` (Cloudflare Worker variant + sample endpoint)
 
 ## Notes
 

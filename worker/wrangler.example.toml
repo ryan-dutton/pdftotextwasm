@@ -1,0 +1,5 @@
+name = "pdftotext-worker-endpoint"
+main = "worker/sample-endpoint.js"
+compatibility_date = "2026-02-08"
+
+# If your project already has a wrangler.toml, copy just the fields you need.
